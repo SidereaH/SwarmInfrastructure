@@ -3,6 +3,9 @@
 Startup PostgreSQL, Kafka, Redis, TimescaleDB
 ### Start
 ```
+# create global network
+sudo docker network create --driver overlay --attachable scitech-global-network
+# startup
 docker stack deploy -c docker-compose.yaml infra --with-registry-auth
 ```
 ### How to use with other swarms:
