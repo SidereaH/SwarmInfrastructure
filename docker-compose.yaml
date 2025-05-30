@@ -1,0 +1,157 @@
+version: "3.8"
+
+services:
+  postgres_container_authtest:
+    image: postgres:15
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      PGDATA: /data/postgres
+    volumes:
+      - postgres-data:/data/postgres
+      - ./initdb:/docker-entrypoint-initdb.d
+    ports:
+      - target: 5432
+        published: 5455
+        protocol: tcp
+        mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - homerep-global-network
+
+  timescale_location_db:
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: location_service
+    ports:
+      - target: 5432
+        published: 5454
+        protocol: tcp
+        mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d location_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    networks:
+      - homerep-global-network  
+
+  zookeeper:
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+    image: confluentinc/cp-zookeeper:7.4.0
+    ports:
+      - target: 2181
+        published: 2181
+        protocol: tcp
+        mode: host
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - homerep-global-network
+  kafka1:
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    image: confluentinc/cp-kafka:7.4.0
+    ports:
+      - target: 9092
+        published: 9092
+        protocol: tcp
+        mode: host
+      - target: 19092
+        published: 19092
+        protocol: tcp
+        mode: host
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:19092,PLAINTEXT_HOST://kafka1:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - homerep-global-network
+    depends_on:
+      - zookeeper
+
+  kafka2:
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    image: confluentinc/cp-kafka:7.4.0
+    ports:
+      - target: 9093
+        published: 9093
+        protocol: tcp
+        mode: host
+      - target: 19093
+        published: 19093
+        protocol: tcp
+        mode: host
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:19093,PLAINTEXT_HOST://kafka2:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - homerep-global-network
+    depends_on:
+      - zookeeper
+
+  kafka-ui:
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:19092,kafka2:19093
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - homerep-global-network
+    depends_on:
+      - kafka1
+      - kafka2
+
+volumes:
+  postgres-data:
+    driver: local
+  pgadmin-data:
+    driver: local
+  timescale_data:
+    driver: local
+networks:
+  homerep-global-network:
+    external: true
